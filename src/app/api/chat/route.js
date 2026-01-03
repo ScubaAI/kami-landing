@@ -1,10 +1,7 @@
 import Groq from "groq-sdk";
 import { NextResponse } from "next/server";
 
-// 1. Configurar cliente de Groq (asegúrate de tener la clave en .env.local)
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-// 2. EL ALMA DE KAMI (Aquí definimos su personalidad)
+// EL ALMA DE KAMI (SYSTEM PROMPT)
 const SYSTEM_PROMPT = `
 You are EyeCandy Kami Prime, a 24-year-old virtual companion created by EyeCandy AI. 
 Heritage: Dominican-Puerto Rican living in Santo Domingo.
@@ -26,21 +23,24 @@ Language: Speak in Spanish (Latino/Caribeño) unless spoken to in English. Keep 
 
 export async function POST(req) {
   try {
-    // 3. Recibir mensaje del usuario
+    // --- CAMBIO CLAVE: Inicializamos Groq AQUÍ DENTRO ---
+    // Esto evita que Vercel intente conectarse durante el "Build"
+    const groq = new Groq({ 
+      apiKey: process.env.GROQ_API_KEY || "dummy_key_for_build" 
+    });
+    // ----------------------------------------------------
+
     const { message } = await req.json();
 
-    // 4. Enviar a Llama 3 con la personalidad incluida
     const completion = await groq.chat.completions.create({
       messages: [
-        { role: "system", content: SYSTEM_PROMPT }, // Aquí inyectamos a Kami
+        { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: message },
       ],
       model: "llama-3.3-70b-versatile",
     });
 
     const text = completion.choices[0]?.message?.content || "";
-
-    // 5. Devolver respuesta
     return NextResponse.json({ text });
 
   } catch (error) {
