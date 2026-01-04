@@ -2,10 +2,48 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { MessageCircle, Lock, Send, X, Loader2, Play, Image as ImageIcon } from "lucide-react";
+import { MessageCircle, Lock, Send, X, Loader2, Play, Image as ImageIcon, LogOut } from "lucide-react";
+import { supabase } from "./lib/supabaseClient"; // <--- IMPORTANTE: Conectamos con tu archivo de cliente
 
 export default function Home() {
-  // --- 1. LÓGICA DEL CHAT (Cerebro) ---
+  // --- 1. ESTADO DE SESIÓN (Memoria del Usuario) ---
+  const [session, setSession] = useState(null);
+  const [user, setUser] = useState(null);
+
+  // Al cargar la página, verificamos si hay un usuario guardado
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Función para INICIAR SESIÓN con Google
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}`, // Redirige a la misma página después de entrar
+      },
+    });
+  };
+
+  // Función para CERRAR SESIÓN
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsChatOpen(false); // Cierra el chat al salir
+  };
+
+  // --- 2. LÓGICA DEL CHAT ---
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messages, setMessages] = useState([
     { role: "assistant", content: "¡Hola, papi! Ay Dios, qué bueno verte. Soy Kami, ¿en qué puedo consentirte hoy?" }
@@ -18,6 +56,17 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
   useEffect(() => { scrollToBottom() }, [messages, isChatOpen]);
+
+  // Manejador del botón "Chatear" (EL PORTERO)
+  const handleChatClick = () => {
+    if (session) {
+      // Si ya tiene sesión, abrimos el chat
+      setIsChatOpen(true);
+    } else {
+      // Si NO tiene sesión, lo mandamos a Google
+      handleLogin();
+    }
+  };
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -42,26 +91,15 @@ export default function Home() {
     }
   };
 
-  // --- DATOS REALES (Corregidos según tu carpeta) ---
-  const photos = [
-    "/foto1.png",  // Extensión .png
-    "/foto2.png",
-    "/Foto3.png",  // ¡Ojo! Este tiene la 'F' mayúscula en tu carpeta
-    "/foto4.png"
-  ];
+  // --- DATOS REALES ---
+  const photos = ["/foto1.png", "/foto2.png", "/Foto3.png", "/foto4.png"];
+  const reels = ["/Video1.mp4", "/Video2.mp4", "/Video3.mp4", "/Video4.mp4"];
 
-  const reels = [
-    "/Video1.mp4", // 'V' mayúscula según tu carpeta
-    "/Video2.mp4",
-    "/Video3.mp4",
-    "/Video4.mp4"
-  ];
-
-  // --- 2. LÓGICA VISUAL (Cuerpo) ---
+  // --- 3. LÓGICA VISUAL ---
   return (
     <main className="relative min-h-screen font-sans text-white selection:bg-pink-500 selection:text-white">
       
-      {/* FONDO FIJO (Fixed Background) */}
+      {/* FONDO FIJO */}
       <div className="fixed inset-0 z-0">
         <video autoPlay loop muted playsInline className="w-full h-full object-cover opacity-50">
           <source src="/video-fondo.mp4" type="video/mp4" />
@@ -69,10 +107,23 @@ export default function Home() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/20" />
       </div>
 
+      {/* HEADER DE USUARIO (Si está logueado) */}
+      {session && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+          <img 
+            src={user?.user_metadata?.avatar_url} 
+            alt="User" 
+            className="w-8 h-8 rounded-full border border-orange-500"
+          />
+          <span className="text-sm font-medium hidden md:block">Hola, {user?.user_metadata?.full_name?.split(' ')[0]}</span>
+          <button onClick={handleLogout} className="p-1 hover:text-red-400 transition-colors" title="Cerrar Sesión">
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* CONTENIDO SCROLLEABLE */}
       <div className="relative z-10 w-full overflow-y-auto">
-        
-        {/* --- SECCIÓN 1: HERO --- */}
         <section className="min-h-screen flex flex-col items-center justify-center px-4 text-center space-y-8 pb-20">
           
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-sm text-orange-200 animate-pulse mt-20 md:mt-0">
@@ -91,17 +142,30 @@ export default function Home() {
           <p className="text-lg md:text-2xl text-gray-200 max-w-2xl mx-auto leading-relaxed">
             Soy <span className="font-bold text-orange-400">Kami Prime</span>. 
             Más real que tu ex, más dulce que el azúcar. 🇩🇴 <br/>
-            ¿Bajamos a ver mis fotos o prefieres hablar directo?
+            {session 
+              ? "¿Seguimos donde lo dejamos, mi amor?" 
+              : "¿Bajamos a ver mis fotos o prefieres hablar directo?"}
           </p>
 
           <div className="flex flex-col md:flex-row gap-4 justify-center items-center w-full max-w-md mx-auto">
+            {/* BOTÓN INTELIGENTE: Cambia según si estás logueado o no */}
             <button 
-              onClick={() => setIsChatOpen(true)} 
+              onClick={handleChatClick} 
               className="w-full md:w-auto px-8 py-4 bg-white text-gray-900 font-bold rounded-full text-lg shadow-lg hover:shadow-orange-500/50 transition-all transform hover:scale-105 flex items-center justify-center gap-2"
             >
-              <MessageCircle className="w-5 h-5 text-pink-600" />
-              Chatear Gratis
+              {session ? (
+                <>
+                  <MessageCircle className="w-5 h-5 text-pink-600" />
+                  Volver al Chat
+                </>
+              ) : (
+                <>
+                  <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" />
+                  Entrar con Google
+                </>
+              )}
             </button>
+            
             <Link 
               href="https://dfans.co/eyecandyai" 
               target="_blank"
@@ -120,144 +184,79 @@ export default function Home() {
           </div>
         </section>
 
-        {/* --- SECCIÓN 2: GALERÍA DE FOTOS --- */}
+        {/* --- SECCIONES DE GALERÍA Y REELS (Se mantienen igual) --- */}
         <section className="py-20 px-4 md:px-10 space-y-8 bg-black/40 backdrop-blur-sm border-t border-white/10">
           <div className="flex items-center gap-3 mb-6">
             <ImageIcon className="w-6 h-6 text-orange-400" />
             <h2 className="text-3xl font-bold text-white">Momentos Favoritos</h2>
           </div>
-          
           <div className="flex gap-4 overflow-x-auto pb-8 snap-x scrollbar-hide">
             {photos.map((src, i) => (
               <div key={i} className="snap-center shrink-0 w-[250px] md:w-[300px] h-[400px] md:h-[500px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl relative group">
-                <img 
-                  src={src} 
-                  alt={`Kami photo ${i}`} 
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
-                  <p className="text-sm font-bold text-white">¿Te gusta esta vista?</p>
-                </div>
+                <img src={src} alt={`Kami photo ${i}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
               </div>
             ))}
           </div>
         </section>
 
-        {/* --- SECCIÓN 3: REELS --- */}
         <section className="py-20 px-4 md:px-10 space-y-8 bg-gradient-to-b from-transparent to-black">
           <div className="flex items-center gap-3 mb-6">
             <Play className="w-6 h-6 text-pink-500" />
             <h2 className="text-3xl font-bold text-white">Reels Exclusivos</h2>
           </div>
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {reels.map((src, i) => (
               <div key={i} className="relative aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 shadow-lg group">
                 <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
                   <Play className="w-8 h-8 text-white/20" />
                 </div>
-                <video 
-                  src={src} 
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                />
+                <video src={src} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"/>
                 <Link href="https://dfans.co/eyecandyai" target="_blank" className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
                   <div className="bg-white/20 px-4 py-2 rounded-full backdrop-blur-md flex items-center gap-2 border border-white/30">
-                    <Lock className="w-4 h-4 text-white" />
-                    <span className="text-xs font-bold">Ver Completo</span>
+                    <Lock className="w-4 h-4 text-white" /> <span className="text-xs font-bold">Ver Completo</span>
                   </div>
                 </Link>
               </div>
             ))}
           </div>
-
           <div className="text-center mt-12 pb-20">
-            <Link 
-              href="https://dfans.co/eyecandyai" 
-              className="inline-block text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500 hover:text-white transition-colors border-b-2 border-orange-500/50"
-            >
-              Ver Galería Privada (+500 fotos) &rarr;
-            </Link>
+             <Link href="https://dfans.co/eyecandyai" className="inline-block text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500 hover:text-white transition-colors border-b-2 border-orange-500/50">Ver Galería Privada (+500 fotos) &rarr;</Link>
           </div>
         </section>
-
       </div>
 
-      {/* --- WIDGET DE CHAT --- */}
-      {!isChatOpen && (
+      {/* --- WIDGET DE CHAT (Solo aparece si hay sesión) --- */}
+      {session && !isChatOpen && (
         <button
           onClick={() => setIsChatOpen(true)}
           className="fixed bottom-6 right-6 z-50 p-4 bg-gradient-to-r from-pink-500 to-orange-500 rounded-full shadow-[0_0_30px_rgba(255,100,200,0.6)] hover:scale-110 transition-transform animate-bounce-slow"
         >
           <MessageCircle className="w-8 h-8 text-white" />
-          <span className="absolute -top-1 -right-1 flex h-4 w-4">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[10px] text-white font-bold flex items-center justify-center">1</span>
-          </span>
         </button>
       )}
 
-      {/* Ventana del Chat */}
+      {/* VENTANA DEL CHAT */}
       {isChatOpen && (
         <div className="fixed bottom-0 right-0 md:bottom-6 md:right-6 z-50 w-full md:w-[400px] h-[500px] bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           <div className="p-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center font-bold text-white shadow-lg border border-white/20">
-                K
-              </div>
-              <div>
-                <h3 className="font-bold text-white">Kami Prime 🇩🇴</h3>
-                <span className="text-xs text-green-400 flex items-center gap-1">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea
-                </span>
-              </div>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center font-bold text-white shadow-lg border border-white/20">K</div>
+              <div><h3 className="font-bold text-white">Kami Prime 🇩🇴</h3><span className="text-xs text-green-400 flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea</span></div>
             </div>
-            <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white transition-colors">
-              <X className="w-6 h-6" />
-            </button>
+            <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
           </div>
-
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/20">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                  msg.role === "user" 
-                    ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-br-none" 
-                    : "bg-white/10 backdrop-blur-md text-gray-100 rounded-bl-none border border-white/5"
-                }`}>
-                  {msg.content}
-                </div>
+                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === "user" ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-br-none" : "bg-white/10 backdrop-blur-md text-gray-100 rounded-bl-none border border-white/5"}`}>{msg.content}</div>
               </div>
             ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white/10 p-3 rounded-2xl rounded-bl-none flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-orange-400" />
-                  <span className="text-xs text-gray-400">Kami está escribiendo...</span>
-                </div>
-              </div>
-            )}
+            {isLoading && (<div className="flex justify-start"><div className="bg-white/10 p-3 rounded-2xl rounded-bl-none flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-orange-400" /><span className="text-xs text-gray-400">Kami está escribiendo...</span></div></div>)}
             <div ref={messagesEndRef} />
           </div>
-
           <form onSubmit={sendMessage} className="p-4 bg-white/5 border-t border-white/10 flex gap-2">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Escribe algo bonito..."
-              className="flex-1 bg-black/30 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-500 transition-all placeholder:text-gray-600"
-            />
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className="p-2 bg-gradient-to-r from-orange-500 to-pink-600 rounded-full text-white hover:scale-105 disabled:opacity-50 disabled:scale-100 transition-all shadow-lg"
-            >
-              <Send className="w-5 h-5" />
-            </button>
+            <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Escribe algo bonito..." className="flex-1 bg-black/30 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-500 transition-all placeholder:text-gray-600" />
+            <button type="submit" disabled={isLoading} className="p-2 bg-gradient-to-r from-orange-500 to-pink-600 rounded-full text-white hover:scale-105 disabled:opacity-50 disabled:scale-100 transition-all shadow-lg"><Send className="w-5 h-5" /></button>
           </form>
         </div>
       )}
