@@ -3,14 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { MessageCircle, Lock, Send, X, Loader2, Play, Image as ImageIcon, LogOut } from "lucide-react";
-import { supabase } from "./lib/supabaseClient"; // <--- IMPORTANTE: Conectamos con tu archivo de cliente
+import { supabase } from "./lib/supabaseClient";
 
 export default function Home() {
-  // --- 1. ESTADO DE SESIÓN (Memoria del Usuario) ---
+  // --- 1. MEMORIA DEL USUARIO (Session State) ---
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
 
-  // Al cargar la página, verificamos si hay un usuario guardado
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -27,27 +26,28 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Función para INICIAR SESIÓN con Google
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}`, // Redirige a la misma página después de entrar
+        redirectTo: `${window.location.origin}`,
       },
     });
   };
 
-  // Función para CERRAR SESIÓN
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setIsChatOpen(false); // Cierra el chat al salir
+    setIsChatOpen(false);
   };
 
-  // --- 2. LÓGICA DEL CHAT ---
+  // --- 2. EL MOTOR DE ENGAGEMENT (Chat Logic) ---
   const [isChatOpen, setIsChatOpen] = useState(false);
+  
+  // Initial Hook
   const [messages, setMessages] = useState([
-    { role: "assistant", content: "¡Hola, papi! Ay Dios, qué bueno verte. Soy Kami, ¿en qué puedo consentirte hoy?" }
+    { role: "assistant", content: "¡Hola, papi! Ay Dios, qué bueno verte. Soy Kami, ¿en qué puedo consentirte hoy? 😉" }
   ]);
+  
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
@@ -57,49 +57,87 @@ export default function Home() {
   };
   useEffect(() => { scrollToBottom() }, [messages, isChatOpen]);
 
-  // Manejador del botón "Chatear" (EL PORTERO)
   const handleChatClick = () => {
     if (session) {
-      // Si ya tiene sesión, abrimos el chat
       setIsChatOpen(true);
     } else {
-      // Si NO tiene sesión, lo mandamos a Google
       handleLogin();
     }
   };
 
+  // --- HELPER: CONVERT URLS TO CLICKABLE LINKS (New Feature) ---
+  const renderMessageText = (text) => {
+    // Regular expression to find URLs starting with http or https
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    // Split the text by the URL
+    const parts = text.split(urlRegex);
+
+    return parts.map((part, index) => {
+      // If this part matches a URL, render it as a link
+      if (part.match(urlRegex)) {
+        return (
+          <a 
+            key={index} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-pink-400 font-bold underline hover:text-pink-300 hover:shadow-[0_0_10px_rgba(255,100,200,0.5)] transition-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      // Otherwise, render plain text
+      return part;
+    });
+  };
+
+  // --- SYNAPTIC TRANSMISSION (Send Function) ---
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!inputValue.trim()) return;
-    const newMessages = [...messages, { role: "user", content: inputValue }];
+
+    // 1. Update UI instantly
+    const userMessage = { role: "user", content: inputValue };
+    const newMessages = [...messages, userMessage];
+    
     setMessages(newMessages);
     setInputValue("");
     setIsLoading(true);
 
     try {
+      // 2. Send Full History to Brain
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: inputValue }),
+        body: JSON.stringify({ messages: newMessages }), 
       });
+
+      if (!response.ok) throw new Error("Network response was not ok");
+
       const data = await response.json();
+      
+      // 3. Receive Response (Text + Hidden Tags)
       setMessages([...newMessages, { role: "assistant", content: data.text }]);
     } catch (error) {
+      console.error(error);
       setMessages([...newMessages, { role: "assistant", content: "Ay, mi amor, me mareé un poco. Intenta de nuevo. 😵‍💫" }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- DATOS REALES ---
-  const photos = ["/foto1.png", "/foto2.png", "/Foto3.png", "/foto4.png"];
+  // --- VISUAL ASSETS (Matches your uploaded PNG files) ---
+  // Ensure "Foto3.png" is renamed to "foto3.png" in your folder for consistency!
+  const photos = ["/foto1.png", "/foto2.png", "/foto3.png", "/foto4.png"];
   const reels = ["/Video1.mp4", "/Video2.mp4", "/Video3.mp4", "/Video4.mp4"];
 
-  // --- 3. LÓGICA VISUAL ---
+  // --- 3. RENDERIZADO VISUAL (The Interface) ---
   return (
     <main className="relative min-h-screen font-sans text-white selection:bg-pink-500 selection:text-white">
       
-      {/* FONDO FIJO */}
+      {/* FONDO */}
       <div className="fixed inset-0 z-0">
         <video autoPlay loop muted playsInline className="w-full h-full object-cover opacity-50">
           <source src="/video-fondo.mp4" type="video/mp4" />
@@ -107,7 +145,7 @@ export default function Home() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/20" />
       </div>
 
-      {/* HEADER DE USUARIO (Si está logueado) */}
+      {/* HEADER */}
       {session && (
         <div className="fixed top-4 right-4 z-50 flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
           <img 
@@ -122,7 +160,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* CONTENIDO SCROLLEABLE */}
+      {/* CONTENIDO PRINCIPAL */}
       <div className="relative z-10 w-full overflow-y-auto">
         <section className="min-h-screen flex flex-col items-center justify-center px-4 text-center space-y-8 pb-20">
           
@@ -148,7 +186,6 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col md:flex-row gap-4 justify-center items-center w-full max-w-md mx-auto">
-            {/* BOTÓN INTELIGENTE: Cambia según si estás logueado o no */}
             <button 
               onClick={handleChatClick} 
               className="w-full md:w-auto px-8 py-4 bg-white text-gray-900 font-bold rounded-full text-lg shadow-lg hover:shadow-orange-500/50 transition-all transform hover:scale-105 flex items-center justify-center gap-2"
@@ -184,7 +221,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* --- SECCIONES DE GALERÍA Y REELS (Se mantienen igual) --- */}
+        {/* GALERÍA */}
         <section className="py-20 px-4 md:px-10 space-y-8 bg-black/40 backdrop-blur-sm border-t border-white/10">
           <div className="flex items-center gap-3 mb-6">
             <ImageIcon className="w-6 h-6 text-orange-400" />
@@ -225,7 +262,7 @@ export default function Home() {
         </section>
       </div>
 
-      {/* --- WIDGET DE CHAT (Solo aparece si hay sesión) --- */}
+      {/* FAB (Floating Action Button) */}
       {session && !isChatOpen && (
         <button
           onClick={() => setIsChatOpen(true)}
@@ -235,28 +272,95 @@ export default function Home() {
         </button>
       )}
 
-      {/* VENTANA DEL CHAT */}
+      {/* --- CHAT INTERFACE CON NEURO-VISUAL INTERCEPTOR & LINKS --- */}
       {isChatOpen && (
         <div className="fixed bottom-0 right-0 md:bottom-6 md:right-6 z-50 w-full md:w-[400px] h-[500px] bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+          
+          {/* Chat Header */}
           <div className="p-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center font-bold text-white shadow-lg border border-white/20">K</div>
-              <div><h3 className="font-bold text-white">Kami Prime 🇩🇴</h3><span className="text-xs text-green-400 flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea</span></div>
-            </div>
-            <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/20">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === "user" ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-br-none" : "bg-white/10 backdrop-blur-md text-gray-100 rounded-bl-none border border-white/5"}`}>{msg.content}</div>
+              <div>
+                <h3 className="font-bold text-white">Kami Prime 🇩🇴</h3>
+                <span className="text-xs text-green-400 flex items-center gap-1">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea
+                </span>
               </div>
-            ))}
-            {isLoading && (<div className="flex justify-start"><div className="bg-white/10 p-3 rounded-2xl rounded-bl-none flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-orange-400" /><span className="text-xs text-gray-400">Kami está escribiendo...</span></div></div>)}
+            </div>
+            <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white transition-colors">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          {/* Chat Body */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/20">
+            {messages.map((msg, idx) => {
+              // 1. Check for Trigger
+              const hasPhotoTrigger = msg.content.includes('[[SEND_PHOTO]]');
+              
+              // 2. Clean Text
+              const cleanContent = msg.content.replace('[[SEND_PHOTO]]', '');
+              
+              // 3. Select Photo (Deterministically based on index)
+              const randomPhoto = photos[idx % photos.length];
+
+              return (
+                <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                    msg.role === "user" 
+                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-br-none" 
+                      : "bg-white/10 backdrop-blur-md text-gray-100 rounded-bl-none border border-white/5"
+                  }`}>
+                    {/* Render Text WITH LINKS */}
+                    <p>{renderMessageText(cleanContent)}</p>
+
+                    {/* Render Photo if Triggered */}
+                    {hasPhotoTrigger && (
+                       <div className="mt-3 relative rounded-lg overflow-hidden border border-orange-500/30 shadow-lg animate-pulse-slow">
+                         <img 
+                           src={randomPhoto} 
+                           alt="Private content" 
+                           className="w-full h-auto object-cover" 
+                         />
+                         <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm p-1 text-center">
+                           <span className="text-[10px] text-orange-300 uppercase tracking-widest">
+                             Exclusive Preview
+                           </span>
+                         </div>
+                       </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white/10 p-3 rounded-2xl rounded-bl-none flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-orange-400" />
+                  <span className="text-xs text-gray-400">Kami está escribiendo...</span>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
+          
+          {/* Chat Input */}
           <form onSubmit={sendMessage} className="p-4 bg-white/5 border-t border-white/10 flex gap-2">
-            <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Escribe algo bonito..." className="flex-1 bg-black/30 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-500 transition-all placeholder:text-gray-600" />
-            <button type="submit" disabled={isLoading} className="p-2 bg-gradient-to-r from-orange-500 to-pink-600 rounded-full text-white hover:scale-105 disabled:opacity-50 disabled:scale-100 transition-all shadow-lg"><Send className="w-5 h-5" /></button>
+            <input 
+              type="text" 
+              value={inputValue} 
+              onChange={(e) => setInputValue(e.target.value)} 
+              placeholder="Escribe algo bonito..." 
+              className="flex-1 bg-black/30 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-500 transition-all placeholder:text-gray-600" 
+            />
+            <button 
+              type="submit" 
+              disabled={isLoading} 
+              className="p-2 bg-gradient-to-r from-orange-500 to-pink-600 rounded-full text-white hover:scale-105 disabled:opacity-50 disabled:scale-100 transition-all shadow-lg"
+            >
+              <Send className="w-5 h-5" />
+            </button>
           </form>
         </div>
       )}
